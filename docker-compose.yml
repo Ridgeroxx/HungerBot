@@ -1,0 +1,19 @@
+version: "3.9"
+services:
+  backend:
+    build: ./backend
+    command: bash start.sh
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+    working_dir: /app
+  frontend:
+    build:
+      context: ./frontend
+    command: npm run dev -- --host 0.0.0.0
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/usr/src/app
+    working_dir: /usr/src/app

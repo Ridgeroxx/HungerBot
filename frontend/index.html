@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>HungerBot</title>
+    <script src="https://telegram.org/js/telegram-web-app.js?56"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            padding-bottom: 100px;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        .header {
+            background: rgba(255,255,255,0.2);
+            backdrop-filter: blur(10px);
+            border-radius: 28px;
+            padding: 20px;
+            margin-bottom: 20px;
+            text-align: center;
+            color: white;
+        }
+        .header h1 {
+            font-size: 28px;
+            margin-bottom: 5px;
+        }
+        .menu-item {
+            background: white;
+            border-radius: 20px;
+            padding: 15px;
+            margin-bottom: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .menu-item:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+        .item-info h3 {
+            font-size: 18px;
+            margin-bottom: 4px;
+        }
+        .item-info p {
+            font-size: 13px;
+            color: #666;
+        }
+        .item-price {
+            font-weight: bold;
+            color: #667eea;
+            font-size: 18px;
+        }
+        .cart {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: white;
+            border-radius: 28px 28px 0 0;
+            padding: 16px 20px;
+            box-shadow: 0 -4px 20px rgba(0,0,0,0.1);
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        .cart-header {
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        .cart-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #eee;
+        }
+        .cart-total {
+            font-weight: bold;
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 2px solid #667eea;
+            display: flex;
+            justify-content: space-between;
+        }
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 40px;
+            font-weight: bold;
+            width: 100%;
+            margin-top: 12px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:active {
+            transform: scale(0.98);
+        }
+        .empty-cart {
+            text-align: center;
+            color: #999;
+            padding: 20px;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="header">
+        <h1>🍲 HungerBot</h1>
+        <p>Fresh meals delivered to your desk</p>
+    </div>
+
+    <div id="menu"></div>
+
+    <div class="cart" id="cart">
+        <div class="cart-header">🛒 Your Order</div>
+        <div id="cart-items"></div>
+        <div class="cart-total">
+            <span>Total (incl. 3 GHS delivery)</span>
+            <span id="total">0 GHS</span>
+        </div>
+        <button id="checkout">Place Order</button>
+    </div>
+</div>
+
+<script>
+    const MENU = [
+        { id: 1, name: "Waakye", description: "Spaghetti, egg, meat", price: 15 },
+        { id: 2, name: "Jollof Rice", description: "Chicken, coleslaw", price: 20 },
+        { id: 3, name: "Beans & Plantain", description: "Fried plantain", price: 12 },
+        { id: 4, name: "Fried Rice", description: "Chicken, vegetables", price: 18 },
+        { id: 5, name: "Banku & Tilapia", description: "Hot pepper, okro", price: 25 }
+    ];
+
+    let cart = [];
+    let tg = window.Telegram.WebApp;
+    tg.expand();
+
+    function renderMenu() {
+        const container = document.getElementById('menu');
+        container.innerHTML = MENU.map(item => `
+            <div class="menu-item" data-id="${item.id}">
+                <div class="item-info">
+                    <h3>${item.name}</h3>
+                    <p>${item.description}</p>
+                </div>
+                <div class="item-price">₵${item.price}</div>
+            </div>
+        `).join('');
+        document.querySelectorAll('.menu-item').forEach(el => {
+            el.addEventListener('click', () => {
+                const id = parseInt(el.dataset.id);
+                const item = MENU.find(i => i.id === id);
+                addToCart(item);
+                tg.showAlert(`${item.name} added to cart`);
+            });
+        });
+    }
+
+    function addToCart(item) {
+        const existing = cart.find(i => i.id === item.id);
+        if (existing) {
+            existing.quantity++;
+        } else {
+            cart.push({ ...item, quantity: 1 });
+        }
+        renderCart();
+    }
+
+    function renderCart() {
+        const cartDiv = document.getElementById('cart-items');
+        const totalSpan = document.getElementById('total');
+        if (cart.length === 0) {
+            cartDiv.innerHTML = '<div class="empty-cart">Your cart is empty. Tap a meal to add.</div>';
+            totalSpan.innerText = '₵3.00';
+            return;
+        }
+        let subtotal = 0;
+        cartDiv.innerHTML = cart.map(item => {
+            subtotal += item.price * item.quantity;
+            return `
+                <div class="cart-item">
+                    <span>${item.name} x${item.quantity}</span>
+                    <span>₵${item.price * item.quantity}</span>
+                </div>
+            `;
+        }).join('');
+        const total = subtotal + 3;
+        totalSpan.innerText = `₵${total}`;
+    }
+
+    document.getElementById('checkout').addEventListener('click', async () => {
+        if (cart.length === 0) {
+            tg.showAlert('Your cart is empty');
+            return;
+        }
+        const subtotal = cart.reduce((sum, i) => sum + i.price * i.quantity, 0);
+        const total = subtotal + 3;
+
+        // You will replace this URL with your backend URL (Cloudflare or Render)
+        const BACKEND_URL = 'https://expression-institutional-program-jackie.trycloudflare.com'; // CHANGE THIS
+
+        try {
+            const response = await fetch(`${BACKEND_URL}/api/order`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    telegram_id: tg.initDataUnsafe?.user?.id,
+                    items: cart.map(i => ({ id: i.id, name: i.name, quantity: i.quantity, price: i.price })),
+                    subtotal: subtotal
+                })
+            });
+            if (response.ok) {
+                tg.showAlert('✅ Order placed! Check the bot for payment instructions.');
+                cart = [];
+                renderCart();frontend
+                tg.close();
+            } else {
+                tg.showAlert('Failed to place order. Please try again.');
+            }
+        } catch (err) {
+            tg.showAlert('Network error. Is the backend running?');
+        }
+    });
+
+    renderMenu();
+</script>
+</body>
+</html>
